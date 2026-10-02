@@ -12309,7 +12309,42 @@ document.addEventListener('keydown', function(e){
     });
   }
 
+  /* ---------- 4. Popups des points : ne plus se refermer aussitôt au toucher ----------
+     Sur écran tactile, un clic parasite sur la carte (arrivé juste après
+     l'ouverture, pendant le recentrage automatique) refermait le popup. On
+     ignore donc toute fermeture « par clic sur la carte » durant les 700 ms
+     qui suivent l'ouverture. Fermeture normale : bouton ×, autre point,
+     ou toucher sur la carte après ce court délai. Ordinateur : inchangé. */
+  function setupPopupGuard(){
+    if(!window.L || !L.Popup || L.Popup.prototype._mobileGuard) return;
+    if(!window.matchMedia('(pointer:coarse)').matches) return;
+    L.Popup.prototype._mobileGuard = true;
+
+    var origOnAdd = L.Popup.prototype.onAdd;
+    var origGetEvents = L.Popup.prototype.getEvents;
+
+    L.Popup.prototype.onAdd = function(map){
+      this._openedAt = Date.now();
+      return origOnAdd.call(this, map);
+    };
+
+    L.Popup.prototype.getEvents = function(){
+      if(this._guardedEvents) return this._guardedEvents;   /* même objet à l'ajout et au retrait */
+      var ev = origGetEvents.call(this), self = this;
+      if(ev.preclick){
+        var orig = ev.preclick;
+        ev.preclick = function(e){
+          if(Date.now() - (self._openedAt || 0) < 700) return;
+          return orig.call(self, e);
+        };
+      }
+      this._guardedEvents = ev;
+      return ev;
+    };
+  }
+
   function init(){
+    setupPopupGuard();
     document.documentElement.classList.toggle('is-phone', isPhone());
     setupHeaderToggle();
     setupLegendCollapse();
